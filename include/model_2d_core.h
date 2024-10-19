@@ -8,8 +8,23 @@
 #include "Surface.h"
 
 // Core functionalities and member variables of Model2D
+// In model_2d_core.h
 class Model2DCore {
 public:
+    // Member variables
+    int direction;
+    std::vector<Vertex> vertices;
+    std::vector<Edge> edges;
+    std::vector<Surface> surfaces;
+
+    // Default constructor
+    Model2DCore()
+        : direction(-1), vertices(), edges(), surfaces() {}
+
+    // Function to add a single vertex to the model
+    void addVertex(const Vertex& newVertex) {
+        vertices.push_back(newVertex);
+    }
     // Member variables
     int direction;                                 // Direction of the model
     std::vector<Vertex> vertices;                  // List of vertices in the model

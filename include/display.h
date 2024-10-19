@@ -9,7 +9,7 @@
 #include <iostream>
 
 // Display functionalities for Model2D
-class Model2DDisplay : public Model2DCore {
+class Model2DDisplay : virtual public Model2DCore {
 public:
     // Function to display the model's structure (vertices, edges, surfaces)
     void displayModel() const {

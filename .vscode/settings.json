@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "*.py": "python",
+        "*.html": "html",
+        "optional": "cpp",
+        "limits": "cpp"
+    }
+}

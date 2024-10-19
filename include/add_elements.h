@@ -8,7 +8,7 @@
 #include <vector>
 
 // Adding elements functionalities for Model2D
-class Model2DAddElements : public Model2DCore {
+class Model2DAddElements : virtual public Model2DCore {
 public:
     // Function to add a list of vertices to the model
     // Input: const std::vector<Vertex>& newVertices
@@ -24,12 +24,6 @@ public:
         for (const auto& edge : newEdges) {
             edges.push_back(edge);
         }
-    }
-
-    // Function to add a single vertex to the model
-    // Input: const Vertex& newVertex
-    void addVertex(const Vertex& newVertex) {
-        vertices.push_back(newVertex);
     }
 };
 
