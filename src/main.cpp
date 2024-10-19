@@ -1,5 +1,6 @@
 #include <iostream>
 #include "Object3D.h"
+#include "Transformation.h"  // Include Transformation header
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
@@ -34,16 +35,31 @@ int main() {
             return -1;
         }
 
+        // Set up a larger orthographic projection to view the transformations better
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        glOrtho(-2.0, 2.0, -2.0, 2.0, -1.0, 1.0);  // Modify the range to zoom out a bit
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+
         // Initialize OpenGL buffers
         obj.initializeOpenGL();
 
         // Main loop
         while (!glfwWindowShouldClose(window)) {
-            // Render here
+            // Clear the screen
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            // Apply transformations
+            glPushMatrix();  // Save the current matrix state
+            glTranslatef(0.5f, 0.5f, 0.0f);  // Translate by 0.5 units on X and Y
+            glScalef(1.5f, 1.5f, 1.5f);      // Scale by 1.5x
+            glRotatef(45.0f, 0.0f, 0.0f, 1.0f);  // Rotate by 45 degrees around the Z-axis
 
             // Draw the object
             obj.draw();
+
+            glPopMatrix();  // Restore the original matrix state
 
             // Swap front and back buffers
             glfwSwapBuffers(window);
