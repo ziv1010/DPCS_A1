@@ -10,11 +10,11 @@
 				"-fdiagnostics-color=always",
 				"-Wall",
 				"-g",
-				"-I/Users/ziv/Desktop/EngDraw_copy/dependencies/include",    // Custom includes
+				"-I/Users/ziv/Desktop/EngDraw_copy_2/dependencies/include",    // Custom includes
 				"-I/opt/homebrew/opt/glfw/include",                     // Include path for GLFW
 				"-I/opt/homebrew/opt/glew/include",                     // Include path for GLEW
 				"-I/opt/homebrew/opt/glm/include",                      // Include path for GLM
-				"-L/Users/ziv/Desktop/EngDraw_copy/dependencies/library",    // Custom library path
+				"-L/Users/ziv/Desktop/EngDraw_copy_2/dependencies/library",    // Custom library path
 				"-L/opt/homebrew/opt/glfw/lib",                         // Library path for GLFW
 				"-L/opt/homebrew/opt/glew/lib",                         // Library path for GLEW
 				"-L/opt/homebrew/opt/glm/lib",                          // Library path for GLM (if applicable)

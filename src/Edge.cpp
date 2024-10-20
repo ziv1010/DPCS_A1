@@ -1,69 +1,95 @@
+// Edge.cpp
+
 #include "Edge.h"
-#include <glm/glm.hpp>
-#include <cmath>
+#include <cmath>    // For sqrt and pow
+#include <iostream> // For printing messages
 
-Edge::Edge()
-    : A(nullptr), B(nullptr), isHidden(false), isReal(false), edgeID(-1) {
-    // Initializes an edge with default values.
+// Include GLM headers
+#include <glm/glm.hpp>          // For glm::vec3
+#include <glm/gtx/norm.hpp>     // For glm::length, glm::length2
+#include <glm/geometric.hpp>    // For glm::dot
+
+// Default Constructor
+Edge::Edge() {
+    // Initializes the vertices to default-constructed Vertices
+    this->a = Vertex();
+    this->b = Vertex();
+    this->eno = -1;         // Indicates an undefined or invalid edge number
+    this->hidden = false;   // Marks the edge as visible by default
+    this->isTrue = true;    // Marks the edge as active/valid
 }
 
-Edge::Edge(Vertex* vertexA, Vertex* vertexB, int id)
-    : A(vertexA), B(vertexB), isHidden(false), isReal(true), edgeID(id) {
-    // Initializes an edge with specified vertices and edge ID.
+// Parameterized Constructor with Vertices and Edge Number
+Edge::Edge(const Vertex& a, const Vertex& b, int n) {
+    this->a = a;            // Assigns the first vertex
+    this->b = b;            // Assigns the second vertex
+    this->eno = n;          // Assigns the provided edge number
+    this->hidden = false;   // Marks the edge as visible by default
+    this->isTrue = true;    // Marks the edge as active/valid
 
-    // If both vertices have identical coordinates, mark the edge as invalid.
-    if (A->same(*B)) {
-        isReal = false;
-    }
+    const float EPSILON = 1e-6f; // Or use Model_2D::EPS
+
+    if (std::abs(a.x - b.x) < EPSILON &&
+    std::abs(a.y - b.y) < EPSILON &&
+    std::abs(a.z - b.z) < EPSILON) {
+    std::cout << "Same vertices " << a.vNo << " and " << b.vNo << ". No edge added!!" << std::endl;
+    this->isTrue = false; // Marks the edge as invalid if both vertices are the same
+}
 }
 
-Vertex* Edge::getNeighbor(Vertex* currentVertex) const {
-    // Returns the vertex at the opposite end of the edge from the given vertex.
-    if (currentVertex == A) {
-        return B;
-    } else if (currentVertex == B) {
-        return A;
+// Retrieve the Neighboring Vertex of a Given Vertex in the Edge
+Vertex Edge::getNeighbour(const Vertex& d) const {
+    // Given a vertex 'd', this function returns the other vertex connected by the edge.
+    if (this->a.vNo == d.vNo) {
+        return this->b;  // If 'd' is the first vertex, return the second vertex
     } else {
-        return nullptr; // Current vertex is not part of this edge.
+        return this->a;  // Otherwise, return the first vertex
     }
 }
 
-Vertex* Edge::midpoint() const {
-    // Returns a new vertex representing the midpoint of the edge.
-    float midX = (A->x + B->x) / 2.0f;
-    float midY = (A->y + B->y) / 2.0f;
-    float midZ = (A->z + B->z) / 2.0f;
-    return new Vertex(midX, midY, midZ, -1);
+// Calculate and Return the Midpoint Vertex of the Edge
+Vertex Edge::midpoint() const {
+    // Computes the geometric midpoint of the edge by averaging the coordinates of the two vertices.
+    float midX = (this->a.x + this->b.x) / 2.0f;
+    float midY = (this->a.y + this->b.y) / 2.0f;
+    float midZ = (this->a.z + this->b.z) / 2.0f;
+
+    // The vertex number is set to -1, indicating that it's a new, derived vertex.
+    return Vertex(midX, midY, midZ, -1);
 }
 
-bool Edge::overlap(const Edge& otherEdge) const {
-    // Determines if two edges overlap by checking parallelism and shared vertices.
+// Return the Current Edge Object
+Edge Edge::getEdge() const {
+    // Provides access to the current Edge object.
+    return *this;
+}
 
-    // Create direction vectors using GLM.
-    glm::vec3 dir1(A->x - B->x, A->y - B->y, A->z - B->z);
-    glm::vec3 dir2(otherEdge.A->x - otherEdge.B->x, otherEdge.A->y - otherEdge.B->y, otherEdge.A->z - otherEdge.B->z);
+// Determine if Another Edge Overlaps with the Current Edge
+bool Edge::overlap(const Edge& e2) const {
+    // Calculate the direction vectors of both edges
+    glm::vec3 dir1(this->a.x - this->b.x, this->a.y - this->b.y, this->a.z - this->b.z);
+    glm::vec3 dir2(e2.a.x - e2.b.x, e2.a.y - e2.b.y, e2.a.z - e2.b.z);
 
-    // Calculate the cosine of the angle between the edges.
-    float dotProduct = glm::dot(dir1, dir2);
-    float magnitude1 = glm::length(dir1);
-    float magnitude2 = glm::length(dir2);
+    // Calculate the dot product of the direction vectors
+    float res = glm::dot(dir1, dir2);
 
-    if (magnitude1 == 0.0f || magnitude2 == 0.0f) {
-        return false; // One of the edges has zero length.
+    // Calculate the magnitudes of both edge vectors
+    float a1 = glm::length(dir1);
+    float a2 = glm::length(dir2);
+
+    // Normalize the dot product to obtain the cosine of the angle between the edges
+    if (a1 == 0.0f || a2 == 0.0f) {
+        return false; // Avoid division by zero
     }
 
-    float cosineAngle = std::abs(dotProduct / (magnitude1 * magnitude2));
+    res = fabs(res / (a1 * a2));
 
-    // Check if edges are nearly parallel (cosine close to 1) and share a common vertex.
-    if (cosineAngle > 0.99f && cosineAngle < 1.01f &&
-        (A->same(*otherEdge.A) || A->same(*otherEdge.B) || B->same(*otherEdge.A) || B->same(*otherEdge.B))) {
-        return true;
+    // Check if the edges are parallel (cosine near 1) and share at least one common vertex
+    if ((res >= 0.99f && res <= 1.01f) &&
+        (e2.a.same(this->a) || e2.a.same(this->b) ||
+         e2.b.same(this->a) || e2.b.same(this->b))) {
+        return true; // Edges overlap
     }
 
     return false;
-}
-
-Edge* Edge::getEdge() {
-    // Returns the current edge object.
-    return this;
 }

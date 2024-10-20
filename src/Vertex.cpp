@@ -1,37 +1,45 @@
+// Vertex.cpp
+
 #include "Vertex.h"
-#include <glm/glm.hpp>
+#include <cmath>    // For sqrt and pow
+#include <glm/glm.hpp>  // For GLM vector operations
 
-Vertex::Vertex()
-    : x(0.0f), y(0.0f), z(0.0f), isReal(false), vertexID(-1) {
-    // Initializes a vertex with default coordinates and invalid status.
-}
+#include "Vertex.h"
 
-Vertex::Vertex(float xCoord, float yCoord, float zCoord, int id)
-    : x(xCoord), y(yCoord), z(zCoord), isReal(true), vertexID(id) {
-    // Initializes a vertex with specified coordinates and vertex ID.
-}
+// Default constructor
+Vertex::Vertex() : x(0.0f), y(0.0f), z(0.0f), vNo(0), isTrue(true) {}
 
-Vertex::Vertex(const Vertex& v)
-    : x(v.x), y(v.y), z(v.z), isReal(v.isReal), vertexID(-1) {
-    // Creates a copy of the given vertex with a default vertex ID.
-}
+// Parameterized constructor
+Vertex::Vertex(float x_, float y_, float z_, int n_) : x(x_), y(y_), z(z_), vNo(n_), isTrue(true) {}
 
+// Copy constructor
+Vertex::Vertex(const Vertex& v) : x(v.x), y(v.y), z(v.z), vNo(v.vNo), isTrue(v.isTrue) {}
+
+// Get the XY Projection of the Vertex for Top View
 Vertex Vertex::getXY() const {
-    // Returns a new vertex with the XY coordinates for top view projection.
-    return Vertex(x, y, 0.0f, vertexID);
+    // Generates a new Vertex object by projecting the current vertex onto the XY-plane.
+    // The Z-coordinate is eliminated (set to zero) to represent the top view.
+    return Vertex(this->x, this->y, 0.0f, this->vNo);
 }
 
+// Get the YZ Projection of the Vertex for Side View
 Vertex Vertex::getYZ() const {
-    // Returns a new vertex with the YZ coordinates for side view projection.
-    return Vertex(0.0f, y, z, vertexID);
+    // Generates a new Vertex object by projecting the current vertex onto the YZ-plane.
+    // The X-coordinate is eliminated (set to zero) to represent the side view.
+    return Vertex(0.0f, this->y, this->z, this->vNo);
 }
 
+// Get the XZ Projection of the Vertex for Right Side View
 Vertex Vertex::getXZ() const {
-    // Returns a new vertex with the XZ coordinates for front view projection.
-    return Vertex(x, 0.0f, z, vertexID);
+    // Generates a new Vertex object by projecting the current vertex onto the XZ-plane.
+    // The Y-coordinate is eliminated (set to zero) to represent the right side view.
+    return Vertex(this->x, 0.0f, this->z, this->vNo);
 }
 
+// Compare if Two Vertices have the Same Coordinates
 bool Vertex::same(const Vertex& a) const {
-    // Checks if the current vertex has the same coordinates as another vertex.
-    return (x == a.x) && (y == a.y) && (z == a.z);
+    const float EPSILON = 1e-6f;
+    return (std::abs(this->x - a.x) < EPSILON) &&
+           (std::abs(this->y - a.y) < EPSILON) &&
+           (std::abs(this->z - a.z) < EPSILON);
 }
