@@ -1,4 +1,4 @@
-// Model_2D.h
+// 3Dto2DModel.h
 
 #ifndef MODEL_2D_H
 #define MODEL_2D_H
@@ -13,7 +13,7 @@
 
 #include "Vertex.h"
 #include "Edge.h"
-#include "Surface.h"
+#include "Face.h"
 
 class Model_2D {
 public:

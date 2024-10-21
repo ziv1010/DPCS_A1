@@ -1,6 +1,6 @@
-// model_3d.cpp
+// 2Dto3DModel.cpp
 
-#include "Model_3D.h"
+#include "2Dto3DModel.h"
 #include <map>
 #include <iostream>
 #include <fstream>

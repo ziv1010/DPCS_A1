@@ -9,8 +9,8 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
-#include "Model_3D.h"
-#include "Model_2D.h"
+#include "2Dto3DModel.h"
+#include "3Dto2DModel.h"
 #include "Renderer.h" // Include the Renderer header
 
 // Global Variables

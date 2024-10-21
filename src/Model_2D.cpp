@@ -1,8 +1,8 @@
-// Model_2D.cpp
+// 3Dto2DModel.cpp
 #include <set>    // For std::set
 #include <map>    // For std::map
 #include <cmath>  // For mathematical functions like abs, sqrt
-#include "Model_2D.h"
+#include "3Dto2DModel.h"
 
 // Default Constructor
 Model_2D::Model_2D() {

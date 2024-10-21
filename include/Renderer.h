@@ -2,7 +2,7 @@
 #ifndef RENDERER_H
 #define RENDERER_H
 
-#include "Model_3D.h"
+#include "2Dto3DModel.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <string>
