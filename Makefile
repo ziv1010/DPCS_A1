@@ -8,15 +8,17 @@ CC = gcc
 SRC_DIR = src
 INCLUDE_DIR = include
 BUILD_DIR = build
+OBJ_DIR = $(BUILD_DIR)/.o
+OUTPUT_DIR = $(BUILD_DIR)/output
 DEPENDENCIES_DIR = dependencies
 
 # Source files
 SRCS = $(wildcard $(SRC_DIR)/*.cpp)
-OBJS = $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(SRCS))
-OBJS += $(BUILD_DIR)/glad.o
+OBJS = $(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/%.o, $(SRCS))
+OBJS += $(OBJ_DIR)/glad.o
 
 # Executable
-TARGET = $(BUILD_DIR)/app
+TARGET = $(OUTPUT_DIR)/app
 
 # Include paths
 INCLUDE_PATHS = -I$(INCLUDE_DIR) \
@@ -43,24 +45,24 @@ CFLAGS = -Wall -g -Wno-deprecated-declarations $(INCLUDE_PATHS)
 # Build rules
 all: $(TARGET)
 
-# Create build directory if it doesn't exist
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
+# Create build directories if they don't exist
+$(OBJ_DIR) $(OUTPUT_DIR):
+	mkdir -p $@
 
 # Compile .cpp files to .o files
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Compile glad.c separately using C compiler and CFLAGS
-$(BUILD_DIR)/glad.o: $(SRC_DIR)/glad.c | $(BUILD_DIR)
+$(OBJ_DIR)/glad.o: $(SRC_DIR)/glad.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Link the object files to create the executable
-$(TARGET): $(OBJS)
+$(TARGET): $(OBJS) | $(OUTPUT_DIR)
 	$(CXX) $(CXXFLAGS) $(LIBRARY_PATHS) $^ -o $@ $(LIBS)
 
 # Clean up build artifacts
 clean:
-	rm -rf $(BUILD_DIR)/*.o $(TARGET)
+	rm -rf $(OBJ_DIR)/*.o $(OUTPUT_DIR)/app
 
 .PHONY: all clean
