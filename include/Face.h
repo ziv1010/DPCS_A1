@@ -1,28 +1,19 @@
-// Face.h
-
-#ifndef SURFACE_H
-#define SURFACE_H
+#ifndef FACE_H
+#define FACE_H
 
 #include <vector>
-#include "Edge.h"
+#include "edge.h"
 
-class Surface {
+class Face {
 public:
-    // Attributes
-    std::vector<Edge> boundary;
-    float coeff[4];  // Coefficients for the plane equation
-    bool trueSurface;
-    int sno;
+    std::vector<Edge> edges;
 
-    // Constructors
-    Surface();
-    Surface(const std::vector<Edge>& a, int n);
+    Face(const std::vector<Edge>& edges) : edges(edges) {}
 
-    // Methods
-    std::vector<Edge> getEdges() const;
-    void calc_coeff();
-    float calcProj(const Vertex& v_test) const;
-    float dotProduct(const Edge& et) const;
+    // Add edge to the face
+    void addEdge(const Edge& edge) {
+        edges.push_back(edge);
+    }
 };
 
-#endif // SURFACE_H
+#endif // FACE_H

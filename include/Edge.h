@@ -1,28 +1,10 @@
-// Edge.h
-
 #ifndef EDGE_H
 #define EDGE_H
 
-#include "Vertex.h"
-
 class Edge {
 public:
-    // Attributes
-    Vertex a;
-    Vertex b;
-    bool hidden;
-    bool isTrue;
-    int eno;
-
-    // Constructors
-    Edge();
-    Edge(const Vertex& a, const Vertex& b, int c);
-
-    // Methods
-    Vertex getNeighbour(const Vertex& d) const;
-    Vertex midpoint() const;
-    Edge getEdge() const;
-    bool overlap(const Edge& e2) const;
+    int v1_index, v2_index;  // Indices of vertices forming an edge
+    Edge(int v1, int v2) : v1_index(v1), v2_index(v2) {}
 };
 
-#endif // EDGE_H
+#endif

@@ -1,27 +1,21 @@
-// Vertex.h
-
 #ifndef VERTEX_H
 #define VERTEX_H
 
 class Vertex {
 public:
-    // Attributes
-    float x;
-    float y;
-    float z;
-    bool isTrue;
-    int vNo;
+    float x, y, z;
 
-    // Constructors
-    Vertex();
-    Vertex(float x, float y, float z, int n);
-    Vertex(const Vertex& v);
+    Vertex(float x, float y, float z) : x(x), y(y), z(z) {}
+    
+    // Accessors
+    float getX() const { return x; }
+    float getY() const { return y; }
+    float getZ() const { return z; }
 
-    // Methods
-    Vertex getXY() const;
-    Vertex getYZ() const;
-    Vertex getXZ() const;
-    bool same(const Vertex& a) const;
+    // Mutators
+    void setX(float x) { this->x = x; }
+    void setY(float y) { this->y = y; }
+    void setZ(float z) { this->z = z; }
 };
 
 #endif // VERTEX_H
