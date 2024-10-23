@@ -24,6 +24,11 @@ public:
                         x * v.y - y * v.x);
     }
 
+        // Dot product
+    float dot(const Vector3D& v) const {
+        return x * v.x + y * v.y + z * v.z;
+    }
+
     // Length of the vector
     float length() const {
         return std::sqrt(x*x + y*y + z*z);

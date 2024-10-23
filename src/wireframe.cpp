@@ -8,7 +8,10 @@
 #include <algorithm>
 #include <iostream>
 #include <fstream>
-
+#include "vector2d.h"
+#include <stack>
+#include <algorithm>
+#include <cmath>
 
 // Constructor
 Wireframe::Wireframe(const Projection2D& front, const Projection2D& top, const Projection2D& side)
@@ -930,4 +933,282 @@ void Wireframe::removeDanglingEdgesFromPlane(Plane& plane) {
                 plane.edgesOnPlane.end());
         }
     }
+}
+
+
+// In wireframe.cpp
+
+void Wireframe::generateFaceLoops() {
+    for (auto& plane : planes) {
+        // F1: Construct vertex-edge adjacency table for the plane
+        std::unordered_map<int, std::vector<int>> adjTab; // Vertex index to list of edge indices
+
+        for (int edgeIdx : plane.edgesOnPlane) {
+            const Edge3D& edge = edges3D[edgeIdx];
+            if (!edge.isValid) continue;
+
+            adjTab[edge.v1_index].push_back(edgeIdx);
+            adjTab[edge.v2_index].push_back(edgeIdx);
+        }
+
+        // F2: Find the ordered adjacent edges of each vertex
+        std::unordered_map<int, std::vector<int>> orderedEdgesAtVertex; // Vertex index to ordered edge indices
+
+        for (const auto& entry : adjTab) {
+            int vertexIdx = entry.first;
+            const std::vector<int>& connectedEdges = entry.second;
+
+            // F2.1: Select an entry (v, n_e, SE) from adjTab
+            // F2.2: Order the adjacent edges based on the clockwise angle around the plane normal
+            std::vector<int> orderedEdges = orderEdgesAtVertex(vertexIdx, connectedEdges, plane);
+
+            orderedEdgesAtVertex[vertexIdx] = orderedEdges;
+        }
+
+        // F3: Find all basic loops within the planar graph
+        std::vector<bool> edgeVisited(edges3D.size(), false);
+
+        for (int edgeIdx : plane.edgesOnPlane) {
+            if (edgeVisited[edgeIdx]) continue;
+
+            std::vector<int> basicLoop;
+
+            // Start traversing from this edge in both directions
+            if (findBasicLoop(edgeIdx, plane, orderedEdgesAtVertex, edgeVisited, basicLoop)) {
+                plane.basicLoops.push_back(basicLoop);
+            }
+        }
+
+        // F4: Identify inclusion relationships between basic loops
+        std::vector<std::vector<bool>> inclusionMatrix = computeInclusionMatrix(plane);
+
+        // F5: Form face loops
+        plane.faceLoops = formFaceLoops(plane.basicLoops, inclusionMatrix);
+    }
+}
+
+
+std::vector<int> Wireframe::orderEdgesAtVertex(int vertexIdx, const std::vector<int>& connectedEdges, const Plane& plane) {
+    std::vector<std::pair<float, int>> angleEdgePairs;
+
+    const Vertex3D& vertex = vertices3D[vertexIdx];
+
+    // Reference vector (arbitrary). We'll use the first edge's vector as reference.
+    Vector3D refVector;
+    if (!connectedEdges.empty()) {
+        const Edge3D& refEdge = edges3D[connectedEdges[0]];
+        int otherVertexIdx = (refEdge.v1_index == vertexIdx) ? refEdge.v2_index : refEdge.v1_index;
+        const Vertex3D& otherVertex = vertices3D[otherVertexIdx];
+        refVector = Vector3D(otherVertex.x - vertex.x, otherVertex.y - vertex.y, otherVertex.z - vertex.z).normalize();
+    } else {
+        return {}; // No connected edges
+    }
+
+    // Plane normal vector
+    Vector3D normal(plane.a, plane.b, plane.c);
+
+    for (int edgeIdx : connectedEdges) {
+        const Edge3D& edge = edges3D[edgeIdx];
+        int otherVertexIdx = (edge.v1_index == vertexIdx) ? edge.v2_index : edge.v1_index;
+        const Vertex3D& otherVertex = vertices3D[otherVertexIdx];
+
+        Vector3D edgeVector(otherVertex.x - vertex.x, otherVertex.y - vertex.y, otherVertex.z - vertex.z);
+        edgeVector = edgeVector.normalize();
+
+        // Calculate angle with respect to refVector
+        float angle = std::atan2(normal.cross(refVector).dot(edgeVector), refVector.dot(edgeVector));
+
+        angleEdgePairs.emplace_back(angle, edgeIdx);
+    }
+
+    // Sort edges by angle
+    std::sort(angleEdgePairs.begin(), angleEdgePairs.end(),
+              [](const std::pair<float, int>& a, const std::pair<float, int>& b) {
+                  return a.first < b.first;
+              });
+
+    // Extract ordered edge indices
+    std::vector<int> orderedEdges;
+    for (const auto& pair : angleEdgePairs) {
+        orderedEdges.push_back(pair.second);
+    }
+
+    return orderedEdges;
+}
+
+bool Wireframe::findBasicLoop(int startEdgeIdx, const Plane& plane,
+                              const std::unordered_map<int, std::vector<int>>& orderedEdgesAtVertex,
+                              std::vector<bool>& edgeVisited, std::vector<int>& basicLoop) {
+    std::stack<std::pair<int, int>> edgeStack; // Pair of edge index and current vertex index
+    std::unordered_set<int> visitedEdgesInLoop;
+
+    const Edge3D& startEdge = edges3D[startEdgeIdx];
+    int startVertexIdx = startEdge.v1_index;
+    int currentVertexIdx = startEdge.v2_index;
+
+    edgeStack.push({startEdgeIdx, currentVertexIdx});
+    basicLoop.push_back(startEdgeIdx);
+    visitedEdgesInLoop.insert(startEdgeIdx);
+    edgeVisited[startEdgeIdx] = true;
+
+    while (!edgeStack.empty()) {
+        int edgeIdx = edgeStack.top().first;
+        currentVertexIdx = edgeStack.top().second;
+        edgeStack.pop();
+
+        const auto& orderedEdges = orderedEdgesAtVertex.at(currentVertexIdx);
+
+        // Find the next edge in orderedEdges that hasn't been visited yet
+        bool foundNextEdge = false;
+        for (int nextEdgeIdx : orderedEdges) {
+            if (visitedEdgesInLoop.find(nextEdgeIdx) != visitedEdgesInLoop.end())
+                continue; // Already in current loop
+
+            const Edge3D& nextEdge = edges3D[nextEdgeIdx];
+            int nextVertexIdx = (nextEdge.v1_index == currentVertexIdx) ? nextEdge.v2_index : nextEdge.v1_index;
+
+            // Add to loop
+            basicLoop.push_back(nextEdgeIdx);
+            visitedEdgesInLoop.insert(nextEdgeIdx);
+            edgeVisited[nextEdgeIdx] = true;
+
+            if (nextVertexIdx == startVertexIdx) {
+                // Loop closed
+                return true;
+            }
+
+            edgeStack.push({nextEdgeIdx, nextVertexIdx});
+            foundNextEdge = true;
+            break;
+        }
+
+        if (!foundNextEdge) {
+            // Dead end, backtrack
+            if (!basicLoop.empty()) {
+                int backEdgeIdx = basicLoop.back();
+                basicLoop.pop_back();
+                visitedEdgesInLoop.erase(backEdgeIdx);
+            } else {
+                return false;
+            }
+        }
+    }
+
+    return false;
+}
+std::vector<std::vector<bool>> Wireframe::computeInclusionMatrix(const Plane& plane) {
+    size_t numLoops = plane.basicLoops.size();
+    std::vector<std::vector<bool>> inclusionMatrix(numLoops, std::vector<bool>(numLoops, false));
+
+    // For each pair of loops, determine inclusion
+    for (size_t i = 0; i < numLoops; ++i) {
+        for (size_t j = 0; j < numLoops; ++j) {
+            if (i == j) continue;
+
+            if (isLoopIncludedInLoop(plane.basicLoops[i], plane.basicLoops[j], plane)) {
+                inclusionMatrix[i][j] = true; // Loop i is included in Loop j
+            }
+        }
+    }
+
+    return inclusionMatrix;
+}
+
+std::vector<std::vector<int>> Wireframe::formFaceLoops(const std::vector<std::vector<int>>& basicLoops,
+                                                       const std::vector<std::vector<bool>>& inclusionMatrix) {
+    std::vector<std::vector<int>> faceLoops;
+
+    size_t numLoops = basicLoops.size();
+    std::vector<bool> loopProcessed(numLoops, false);
+
+    for (size_t i = 0; i < numLoops; ++i) {
+        if (loopProcessed[i]) continue;
+
+        // Check if loop i includes other loops
+        std::vector<int> includedLoops;
+        for (size_t j = 0; j < numLoops; ++j) {
+            if (inclusionMatrix[j][i]) {
+                includedLoops.push_back(j);
+                loopProcessed[j] = true;
+            }
+        }
+
+        // Form face loop
+        std::vector<int> faceLoop = basicLoops[i];
+        for (int includedLoopIdx : includedLoops) {
+            // Inner loops can be stored separately if needed
+            // For now, we can append them or store as nested loops
+            // For simplicity, we can keep faceLoop as is
+        }
+
+        faceLoops.push_back(faceLoop);
+        loopProcessed[i] = true;
+    }
+
+    return faceLoops;
+}
+
+bool Wireframe::isLoopIncludedInLoop(const std::vector<int>& innerLoop, const std::vector<int>& outerLoop, const Plane& plane) {
+    // For simplicity, we'll check if a point from innerLoop is inside outerLoop
+    // This can be done using point-in-polygon test in 2D projection
+
+    // Project vertices onto the plane
+    std::vector<Vector2D> outerLoop2D;
+    std::vector<Vector2D> innerLoop2D;
+
+    projectLoopOntoPlane(outerLoop, plane, outerLoop2D);
+    projectLoopOntoPlane(innerLoop, plane, innerLoop2D);
+
+    // Take a point from innerLoop and check if it's inside outerLoop
+    if (innerLoop2D.empty() || outerLoop2D.empty()) return false;
+
+    Vector2D testPoint = innerLoop2D[0];
+    return isPointInPolygon(testPoint, outerLoop2D);
+}
+
+void Wireframe::projectLoopOntoPlane(const std::vector<int>& loop, const Plane& plane, std::vector<Vector2D>& loop2D) {
+    // Define a coordinate system on the plane
+    Vector3D normal(plane.a, plane.b, plane.c);
+    Vector3D refVector;
+
+    // Find two vectors on the plane to define 2D axes
+    if (std::abs(normal.x) > std::abs(normal.y)) {
+        refVector = Vector3D(-normal.z, 0, normal.x).normalize();
+    } else {
+        refVector = Vector3D(0, -normal.z, normal.y).normalize();
+    }
+    Vector3D refVector2 = normal.cross(refVector).normalize();
+
+    // Project each vertex onto the plane coordinate system
+    for (int edgeIdx : loop) {
+        const Edge3D& edge = edges3D[edgeIdx];
+
+        int vIdx1 = edge.v1_index;
+        int vIdx2 = edge.v2_index;
+
+        const Vertex3D& v1 = vertices3D[vIdx1];
+        const Vertex3D& v2 = vertices3D[vIdx2];
+
+        Vector3D point(v1.x, v1.y, v1.z);
+        float x = point.dot(refVector);
+        float y = point.dot(refVector2);
+        loop2D.emplace_back(x, y);
+
+        // Assuming loop is defined by vertices, we can skip v2 if it's the same as v1
+    }
+}
+
+bool Wireframe::isPointInPolygon(const Vector2D& point, const std::vector<Vector2D>& polygon) {
+    int crossings = 0;
+    size_t count = polygon.size();
+    for (size_t i = 0; i < count; ++i) {
+        const Vector2D& a = polygon[i];
+        const Vector2D& b = polygon[(i + 1) % count];
+
+        if (((a.y > point.y) != (b.y > point.y)) &&
+            (point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y + 1e-6f) + a.x)) {
+            crossings++;
+        }
+    }
+    return (crossings % 2) == 1;
 }
