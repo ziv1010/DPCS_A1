@@ -2,14 +2,16 @@
 #define VERTEX3D_H
 
 #include <vector>
+#include <algorithm>
 
 class Vertex3D {
 public:
     float x, y, z;
     std::vector<int> connectedEdges; // Indices of connected edges in the Wireframe's edges3D list
 
-    Vertex3D(float x = 0.0f, float y = 0.0f, float z = 0.0f)
-        : x(x), y(y), z(z) {}
+    // Constructor
+    Vertex3D(float x_ = 0.0f, float y_ = 0.0f, float z_ = 0.0f)
+        : x(x_), y(y_), z(z_) {}
 
     // Accessors
     float getX() const { return x; }
@@ -30,10 +32,11 @@ public:
     void removeConnectedEdge(int edgeIndex) {
         connectedEdges.erase(
             std::remove(connectedEdges.begin(), connectedEdges.end(), edgeIndex),
-            connectedEdges.end());
+            connectedEdges.end()
+        );
     }
 
-    // Get degree
+    // Get degree (number of connected edges)
     int degree() const { return connectedEdges.size(); }
 };
 

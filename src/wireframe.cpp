@@ -1,13 +1,14 @@
 // wireframe.cpp
-
 #include "wireframe.h"
+#include "plane.h"
+#include "vector3d.h"
 #include <unordered_map>
+#include <queue>
+#include <unordered_set>
+#include <algorithm>
 #include <iostream>
 #include <fstream>
-#include <cmath>
-#include <algorithm>
-#include <vector>
-#include <string>
+
 
 // Constructor
 Wireframe::Wireframe(const Projection2D& front, const Projection2D& top, const Projection2D& side)
@@ -623,4 +624,310 @@ void Wireframe::saveToFile(const std::string& filename) const {
     }
 
     outfile.close();
+}
+
+void Wireframe::generatePlanarGraphs() {
+    // P1: Record the adjacent edges for each vertex
+    // This is already handled via Vertex3D.connectedEdges
+
+    // P2: Construct planes
+    std::vector<Plane> tempPlanes;
+    for (size_t vi = 0; vi < vertices3D.size(); ++vi) {
+        const Vertex3D& vertex = vertices3D[vi];
+        const std::vector<int>& connectedEdges = vertex.connectedEdges;
+
+        // For each pair of non-collinear adjacent edges
+        for (size_t m = 0; m < connectedEdges.size(); ++m) {
+            for (size_t n = m + 1; n < connectedEdges.size(); ++n) {
+                int edgeIdx1 = connectedEdges[m];
+                int edgeIdx2 = connectedEdges[n];
+
+                const Edge3D& edge1 = edges3D[edgeIdx1];
+                const Edge3D& edge2 = edges3D[edgeIdx2];
+
+                // Get the other vertices of the edges
+                int vj = (edge1.v1_index == vi) ? edge1.v2_index : edge1.v1_index;
+                int vk = (edge2.v1_index == vi) ? edge2.v2_index : edge2.v1_index;
+
+                const Vertex3D& vertex_j = vertices3D[vj];
+                const Vertex3D& vertex_k = vertices3D[vk];
+
+                // Form two vectors
+                Vector3D vec1(vertex_j.x - vertex.x, vertex_j.y - vertex.y, vertex_j.z - vertex.z);
+                Vector3D vec2(vertex_k.x - vertex.x, vertex_k.y - vertex.y, vertex_k.z - vertex.z);
+
+                // Check for collinearity
+                Vector3D cross = vec1.cross(vec2);
+                if (cross.length() < 1e-6) {
+                    // Vectors are collinear, skip
+                    continue;
+                }
+
+                // P3: Hypothesize the outer normal vector of the plane
+                Vector3D normal = cross.normalize();
+
+                // Plane equation: a(x - x0) + b(y - y0) + c(z - z0) = 0
+                // Simplify to: ax + by + cz + d = 0
+                float a = normal.x;
+                float b = normal.y;
+                float c = normal.z;
+                float d = -(a * vertex.x + b * vertex.y + c * vertex.z);
+
+                // Adjust normal direction based on d
+                if (d < 0) {
+                    a = -a;
+                    b = -b;
+                    c = -c;
+                    d = -d;
+                }
+
+                // Create a new plane
+                Plane newPlane(a, b, c, d);
+
+                // P4: Eliminate duplicated planes
+                bool isDuplicate = false;
+                for (const auto& existingPlane : tempPlanes) {
+                    if (newPlane.isSimilar(existingPlane)) {
+                        isDuplicate = true;
+                        break;
+                    }
+                }
+                if (!isDuplicate) {
+                    tempPlanes.push_back(newPlane);
+                }
+            }
+        }
+    }
+
+    // P5: Search for all edges on the plane
+    for (auto& plane : tempPlanes) {
+        for (size_t ei = 0; ei < edges3D.size(); ++ei) {
+            const Edge3D& edge = edges3D[ei];
+            const Vertex3D& v1 = vertices3D[edge.v1_index];
+            const Vertex3D& v2 = vertices3D[edge.v2_index];
+
+            // Compute distances to plane
+            float D1 = plane.a * v1.x + plane.b * v1.y + plane.c * v1.z + plane.d;
+            float D2 = plane.a * v2.x + plane.b * v2.y + plane.c * v2.z + plane.d;
+
+            if (std::abs(D1) <= 1e-5f && std::abs(D2) <= 1e-5f) {
+                plane.edgesOnPlane.push_back(static_cast<int>(ei));
+            }
+        }
+    }
+
+    // P6: Check the legality of each planar graph
+planes.clear();
+for (auto& plane : tempPlanes) {
+    // P6.1: If a planar graph consists of two or fewer edges, discard
+    if (plane.edgesOnPlane.size() <= 2) {
+        continue;
+    }
+
+    // P6.2: If an edge belongs to only one plane, remove it
+    std::vector<int> validEdges;
+    for (int edgeIdx : plane.edgesOnPlane) {
+        int planeCount = 0;
+        for (const auto& otherPlane : tempPlanes) {
+            if (&plane == &otherPlane) continue;
+            if (std::find(otherPlane.edgesOnPlane.begin(), otherPlane.edgesOnPlane.end(), edgeIdx) != otherPlane.edgesOnPlane.end()) {
+                planeCount++;
+                break; // No need to count further if found in another plane
+            }
+        }
+        if (planeCount > 0) {
+            validEdges.push_back(edgeIdx);
+        } else {
+            // Edge belongs to only one plane, remove it
+            // Apply PEVR procedure if necessary
+            int v1 = edges3D[edgeIdx].v1_index;
+            int v2 = edges3D[edgeIdx].v2_index;
+
+            // Mark edge as invalid (you may need to add this member variable)
+            edges3D[edgeIdx].isValid = false;
+
+            // Remove the edge from connected vertices
+            vertices3D[v1].removeConnectedEdge(edgeIdx);
+            vertices3D[v2].removeConnectedEdge(edgeIdx);
+
+            // Check if vertices have become pathological (degree 0 or 1)
+            if (vertices3D[v1].degree() <= 1) {
+                removePathologicalElementsAtVertex(v1);
+            }
+            if (vertices3D[v2].degree() <= 1) {
+                removePathologicalElementsAtVertex(v2);
+            }
+        }
+    }
+
+    plane.edgesOnPlane = validEdges;
+
+    // P6.1 (Recheck): If after removing edges, the planar graph has two or fewer edges, discard
+    if (plane.edgesOnPlane.size() <= 2) {
+        continue;
+    }
+
+    // P6.3: Check if the boundary is closed
+    if (isPlanarGraphClosed(plane)) {
+        planes.push_back(plane);
+    } else {
+        // Remove unclosed planar graphs
+        // Optionally, remove dangling edges and recheck
+        removeDanglingEdgesFromPlane(plane);
+        // Recheck if the boundary is closed
+        if (isPlanarGraphClosed(plane)) {
+            planes.push_back(plane);
+        }
+        // If still unclosed, discard the plane
+    }
+}
+}
+
+bool Wireframe::isPlanarGraphClosed(const Plane& plane) const {
+    // Build a map of vertex degrees within the plane
+    std::unordered_map<int, std::vector<int>> vertexEdges;
+    for (int edgeIdx : plane.edgesOnPlane) {
+        if (edgeIdx >= edges3D.size()) continue;
+        const Edge3D& edge = edges3D[edgeIdx];
+        if (!edge.isValid) continue;
+
+        vertexEdges[edge.v1_index].push_back(edge.v2_index);
+        vertexEdges[edge.v2_index].push_back(edge.v1_index);
+    }
+
+    // For a closed loop, the graph must be connected, and each vertex must have degree 2
+    // Check connectivity using BFS
+    if (vertexEdges.empty()) return false;
+
+    std::unordered_set<int> visited;
+    std::queue<int> q;
+    int startVertex = vertexEdges.begin()->first;
+    q.push(startVertex);
+    visited.insert(startVertex);
+
+    while (!q.empty()) {
+        int current = q.front();
+        q.pop();
+        for (int neighbor : vertexEdges[current]) {
+            if (visited.find(neighbor) == visited.end()) {
+                visited.insert(neighbor);
+                q.push(neighbor);
+            }
+        }
+    }
+
+    // Check if all vertices are visited
+    if (visited.size() != vertexEdges.size()) return false;
+
+    // Check if each vertex has degree 2
+    for (const auto& ve : vertexEdges) {
+        if (ve.second.size() != 2) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+void Wireframe::removePathologicalElementsAtVertex(int vertexIndex) {
+    if (vertexIndex >= vertices3D.size()) return;
+
+    Vertex3D& vertex = vertices3D[vertexIndex];
+    int degree = vertex.degree();
+
+    if (degree == 0) {
+        // Remove isolated vertex
+        vertices3D.erase(vertices3D.begin() + vertexIndex);
+        // Adjust indices in edges and other vertices
+        adjustIndicesAfterVertexRemoval(vertexIndex);
+    } else if (degree == 1) {
+        // Remove dangling edge and vertex
+        int edgeIdx = vertex.connectedEdges[0];
+        if (edgeIdx >= edges3D.size()) return;
+
+        Edge3D& edge = edges3D[edgeIdx];
+        int otherV = (edge.v1_index == vertexIndex) ? edge.v2_index : edge.v1_index;
+
+        // Remove edge from other vertex
+        vertices3D[otherV].removeConnectedEdge(edgeIdx);
+
+        // Mark edge as invalid
+        edges3D[edgeIdx].isValid = false;
+
+        // Remove vertex
+        vertices3D.erase(vertices3D.begin() + vertexIndex);
+
+        // Adjust indices in edges and other vertices
+        adjustIndicesAfterVertexRemoval(vertexIndex);
+        adjustEdgeIndicesAfterEdgeRemoval(edgeIdx);
+    }
+}
+
+void Wireframe::adjustIndicesAfterVertexRemoval(int removedVertexIndex) {
+    // Adjust vertex indices in edges
+    for (auto& edge : edges3D) {
+        if (edge.v1_index > removedVertexIndex) edge.v1_index--;
+        if (edge.v2_index > removedVertexIndex) edge.v2_index--;
+    }
+    // Adjust connected edges in vertices
+    for (auto& vertex : vertices3D) {
+        for (auto& edgeIdx : vertex.connectedEdges) {
+            // No change needed here
+        }
+    }
+}
+
+void Wireframe::adjustEdgeIndicesAfterEdgeRemoval(int removedEdgeIndex) {
+    // Adjust edge indices in vertices
+    for (auto& vertex : vertices3D) {
+        for (auto& edgeIdx : vertex.connectedEdges) {
+            if (edgeIdx > removedEdgeIndex) edgeIdx--;
+        }
+    }
+}
+
+void Wireframe::removeDanglingEdgesFromPlane(Plane& plane) {
+    bool edgesRemoved = true;
+    while (edgesRemoved) {
+        edgesRemoved = false;
+        std::unordered_map<int, int> vertexDegree;
+
+        // Calculate vertex degrees
+        for (int edgeIdx : plane.edgesOnPlane) {
+            if (edgeIdx >= edges3D.size()) continue;
+            const Edge3D& edge = edges3D[edgeIdx];
+            if (!edge.isValid) continue;
+
+            vertexDegree[edge.v1_index]++;
+            vertexDegree[edge.v2_index]++;
+        }
+
+        std::vector<int> edgesToRemove;
+
+        // Identify dangling edges
+        for (int edgeIdx : plane.edgesOnPlane) {
+            if (edgeIdx >= edges3D.size()) continue;
+            const Edge3D& edge = edges3D[edgeIdx];
+            if (!edge.isValid) continue;
+
+            int v1 = edge.v1_index;
+            int v2 = edge.v2_index;
+
+            if (vertexDegree[v1] == 1 || vertexDegree[v2] == 1) {
+                edgesToRemove.push_back(edgeIdx);
+                edges3D[edgeIdx].isValid = false;
+                vertices3D[v1].removeConnectedEdge(edgeIdx);
+                vertices3D[v2].removeConnectedEdge(edgeIdx);
+                edgesRemoved = true;
+            }
+        }
+
+        // Remove edges from plane
+        for (int edgeIdx : edgesToRemove) {
+            plane.edgesOnPlane.erase(
+                std::remove(plane.edgesOnPlane.begin(), plane.edgesOnPlane.end(), edgeIdx),
+                plane.edgesOnPlane.end());
+        }
+    }
 }
