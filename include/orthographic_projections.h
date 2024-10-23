@@ -16,7 +16,10 @@ void projectToFrontView(const Object3D& object, Projection2D& projection);
 void projectToSideView(const Object3D& object, Projection2D& projection);
 
 // Save projections as PNG
-void saveProjectionAsImage(const std::string& filename, const Projection2D& projection);
+void saveCombinedProjectionAsImage(const std::string& filename,
+                                   const Projection2D& topView,
+                                   const Projection2D& frontView,
+                                   const Projection2D& sideView);
 
 // Save projections to text file
 void saveProjectionsToTextFile(const std::string& filename,

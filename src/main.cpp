@@ -9,7 +9,9 @@ int main() {
     // Read the 3D object from the input file
     read3DObjectFromFile("build/output/input3D.txt", object);
 
-
+    // Perform transformations on the object if needed
+    Transformations::rotateX(object, 30.0f);
+    Transformations::rotateY(object, 45.0f);
 
     // Create Projection2D objects
     Projection2D topView, frontView, sideView;
@@ -19,15 +21,10 @@ int main() {
     projectToFrontView(object, frontView); // Front view
     projectToSideView(object, sideView);  // Side view
 
-    // Save the 2D projections to text file
-    saveProjectionsToTextFile("build/output/projections.txt", topView, frontView, sideView);
+    // Save the 2D projections as one combined PNG file
+    saveCombinedProjectionAsImage("build/output/combined_views.png", topView, frontView, sideView);
 
-    // Save the projections as images
-    saveProjectionAsImage("build/output/top_view.png", topView);
-    saveProjectionAsImage("build/output/front_view.png", frontView);
-    saveProjectionAsImage("build/output/side_view.png", sideView);
-
-    std::cout << "Projections saved to files and images." << std::endl;
+    std::cout << "Projections saved to combined image." << std::endl;
 
     return 0;
 }
