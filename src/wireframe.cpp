@@ -12,6 +12,7 @@
 #include <stack>
 #include <algorithm>
 #include <cmath>
+#include "FaceLoopSide.h"
 
 // Constructor
 Wireframe::Wireframe(const Projection2D& front, const Projection2D& top, const Projection2D& side)
@@ -1649,5 +1650,308 @@ bool Wireframe::pointOnSegment(const Vector3D &point, const Vector3D &segStart, 
     // Check if the point is colinear with the segment
     Vector3D crossProduct = d1.cross(d2);
     return crossProduct.length() < 1e-6f; // Tolerance for floating-point precision
+}
+
+// In wireframe.cpp
+
+void Wireframe::generateBodyLoops() {
+
+
+    std::vector<std::vector<int>> chi; // chi[s][+/-] = 0 or 1 (unused or used)
+    std::vector<std::vector<bool>> expanded; // expanded[s][+/-] = true or false
+
+    // Initialize chi and expanded for each face loop side
+    // Since each face loop has two sides, we'll represent them with a struct
+    std::vector<FaceLoopSide> faceLoopSides;
+
+    for (size_t planeIdx = 0; planeIdx < planes.size(); ++planeIdx) {
+        const Plane& plane = planes[planeIdx];
+        for (size_t faceLoopIdx = 0; faceLoopIdx < plane.faceLoops.size(); ++faceLoopIdx) {
+            // Positive side
+            faceLoopSides.push_back({static_cast<int>(planeIdx), static_cast<int>(faceLoopIdx), true});
+            // Negative side
+            faceLoopSides.push_back({static_cast<int>(planeIdx), static_cast<int>(faceLoopIdx), false});
+        }
+    }
+
+    std::unordered_map<int, int> chiMap; // Key: faceLoopSideIndex, Value: 0 or 1
+    std::unordered_map<int, bool> expandedMap; // Key: faceLoopSideIndex, Value: expanded or not
+
+    for (size_t i = 0; i < faceLoopSides.size(); ++i) {
+        chiMap[i] = 0;       // Mark all sides as unused
+        expandedMap[i] = false; // Mark all sides as unexpanded
+    }
+
+    // B1: Initialize S(S) = empty
+    std::vector<int> S; // Set of face loop sides involved in current body loop
+
+    // B6: Repeat until all face loops have been visited on both sides
+    while (true) {
+        // B2: Select a starting face loop side
+        int startingFaceLoopSideIndex = -1;
+        for (size_t i = 0; i < faceLoopSides.size(); ++i) {
+            if (chiMap[i] == 0) {
+                startingFaceLoopSideIndex = static_cast<int>(i);
+                break;
+            }
+        }
+
+        if (startingFaceLoopSideIndex == -1) {
+            // All face loops have been visited on both sides
+            break;
+        }
+
+        // Begin a new body loop
+        S.clear();
+
+        // Mark the starting face loop side as used
+        chiMap[startingFaceLoopSideIndex] = 1;
+        S.push_back(startingFaceLoopSideIndex);
+        expandedMap[startingFaceLoopSideIndex] = false; // Mark as unexpanded
+
+        // B4: Repeat until no new face loops to expand
+        bool canExpand = true;
+        while (canExpand) {
+            canExpand = false;
+            // B3: Select an unexpanded face loop side from S
+            int currentFaceLoopSideIndex = -1;
+            for (int idx : S) {
+                if (!expandedMap[idx]) {
+                    currentFaceLoopSideIndex = idx;
+                    break;
+                }
+            }
+
+            if (currentFaceLoopSideIndex == -1) {
+                // No unexpanded face loops in S
+                break;
+            }
+
+            expandedMap[currentFaceLoopSideIndex] = true;
+
+            // Get the current face loop side
+            FaceLoopSide& currentSide = faceLoopSides[currentFaceLoopSideIndex];
+            Plane& currentPlane = planes[currentSide.planeIndex];
+            std::vector<int>& currentFaceLoop = currentPlane.faceLoops[currentSide.faceLoopIndex];
+
+            // Compute successive face loops for each edge on the boundary
+            for (int edgeIdx : currentFaceLoop) {
+                Edge3D& edge = edges3D[edgeIdx];
+
+                // Find adjacent face loops at this edge
+                std::vector<std::pair<int, int>> adjacentFaceLoops; // Pair of plane index and face loop index
+
+                // Iterate through planes and face loops to find adjacent face loops sharing this edge
+                for (size_t planeIdx = 0; planeIdx < planes.size(); ++planeIdx) {
+                    Plane& plane = planes[planeIdx];
+                    for (size_t faceLoopIdx = 0; faceLoopIdx < plane.faceLoops.size(); ++faceLoopIdx) {
+                        if (planeIdx == currentSide.planeIndex && faceLoopIdx == currentSide.faceLoopIndex) {
+                            continue; // Skip current face loop
+                        }
+
+                        std::vector<int>& faceLoop = plane.faceLoops[faceLoopIdx];
+                        if (std::find(faceLoop.begin(), faceLoop.end(), edgeIdx) != faceLoop.end()) {
+                            adjacentFaceLoops.push_back({static_cast<int>(planeIdx), static_cast<int>(faceLoopIdx)});
+                        }
+                    }
+                }
+
+                // There should be at least one adjacent face loop
+                if (adjacentFaceLoops.empty()) {
+                    continue; // No adjacent face loops at this edge
+                }
+
+                // Compute the angle and side selection for each adjacent face loop
+                double smallestAlpha = 2 * M_PI + 1; // Initialize to a value larger than 2π
+                int selectedFaceLoopSideIndex = -1;
+
+                for (const auto& adj : adjacentFaceLoops) {
+                    int adjPlaneIdx = adj.first;
+                    int adjFaceLoopIdx = adj.second;
+
+                    Plane& adjPlane = planes[adjPlaneIdx];
+                    std::vector<int>& adjFaceLoop = adjPlane.faceLoops[adjFaceLoopIdx];
+
+                    // Compute normal vectors
+                    Vector3D n_k(currentPlane.a, currentPlane.b, currentPlane.c);
+                    Vector3D n_s(adjPlane.a, adjPlane.b, adjPlane.c);
+
+                    // Compute θ
+                    double dotProduct = n_k.dot(n_s);
+                    double magnitudeProduct = n_k.length() * n_s.length();
+                    double cosTheta = dotProduct / magnitudeProduct;
+                    // Clamp cosTheta to [-1, 1] to avoid NaNs due to numerical errors
+                    cosTheta = std::max(-1.0, std::min(1.0, cosTheta));
+                    double theta = std::acos(cosTheta);
+
+                    // Compute e (edge direction vector)
+                    Vertex3D& v1 = vertices3D[edge.v1_index];
+                    Vertex3D& v2 = vertices3D[edge.v2_index];
+                    Vector3D e(v2.x - v1.x, v2.y - v1.y, v2.z - v1.z);
+                    e = e.normalize();
+
+                    // Ensure e satisfies the right-hand rule with n_k
+                    Vector3D cross_nk_e = n_k.cross(e);
+                    if (cross_nk_e.length() < 1e-6) {
+                        // e is parallel to n_k, adjust e
+                        e = Vector3D(-e.y, e.x, e.z); // Arbitrary orthogonal vector
+                    }
+
+                    // Determine the side of the adjacent face loop
+                    bool positiveSide = true; // Assume positive side initially
+
+                    // For simplicity, let's assume that the face loop sides are determined by the plane normal
+                    // In practice, you might need to implement a function to determine the side based on orientation
+
+                    // Determine α and side selection based on criteria
+                    Vector3D cross_ns_nk = n_s.cross(n_k);
+                    bool sameDirection = cross_ns_nk.dot(e) > 0;
+
+                    double alpha;
+                    bool adjPositiveSide;
+
+                    if (sameDirection && positiveSide) {
+                        alpha = theta;
+                        adjPositiveSide = true;
+                    } else if (!sameDirection && !positiveSide) {
+                        alpha = theta;
+                        adjPositiveSide = false;
+                    } else if (sameDirection && !positiveSide) {
+                        alpha = 2 * M_PI - theta;
+                        adjPositiveSide = false;
+                    } else {
+                        alpha = M_PI + theta;
+                        adjPositiveSide = true;
+                    }
+
+                    // Update if this is the smallest α
+                    if (alpha < smallestAlpha) {
+                        smallestAlpha = alpha;
+                        // Find the index of the adjacent face loop side
+                        int adjFaceLoopSideIndex = -1;
+                        for (size_t idx = 0; idx < faceLoopSides.size(); ++idx) {
+                            FaceLoopSide& side = faceLoopSides[idx];
+                            if (side.planeIndex == adjPlaneIdx && side.faceLoopIndex == adjFaceLoopIdx && side.positiveSide == adjPositiveSide) {
+                                adjFaceLoopSideIndex = static_cast<int>(idx);
+                                break;
+                            }
+                        }
+                        selectedFaceLoopSideIndex = adjFaceLoopSideIndex;
+                    }
+                }
+
+                if (selectedFaceLoopSideIndex != -1) {
+                    // Add the selected face loop side to S if not already in S
+                    if (chiMap[selectedFaceLoopSideIndex] == 0) {
+                        chiMap[selectedFaceLoopSideIndex] = 1;
+                        S.push_back(selectedFaceLoopSideIndex);
+                        expandedMap[selectedFaceLoopSideIndex] = false;
+                        canExpand = true;
+                    }
+                }
+            }
+        }
+
+        // B5: Check body-loop legality
+        if (isBodyLoopLegal(S, faceLoopSides)) {
+            // Store the closed body loop
+            std::vector<int> bodyLoop;
+            for (int idx : S) {
+                FaceLoopSide& side = faceLoopSides[idx];
+                // We can represent the face loop side uniquely with its index
+                bodyLoop.push_back(idx);
+            }
+            bodyLoops.push_back(bodyLoop);
+        }
+
+        // B6: Prepare for the next body loop search
+        // The loop will continue automatically as we check for unvisited face loop sides
+    }
+}
+
+bool Wireframe::isBodyLoopLegal(const std::vector<int>& S, const std::vector<FaceLoopSide>& faceLoopSides)const {
+    // For every edge involved in this body loop, check if it is shared by exactly two face loops
+
+    // Map from edge index to count of face loops sharing it
+    std::unordered_map<int, int> edgeFaceLoopCount;
+
+    for (int idx : S) {
+        const FaceLoopSide& side = faceLoopSides[idx];
+        const Plane& plane = planes[side.planeIndex];
+        const std::vector<int>& faceLoop = plane.faceLoops[side.faceLoopIndex];
+
+        for (int edgeIdx : faceLoop) {
+            edgeFaceLoopCount[edgeIdx]++;
+        }
+    }
+
+    // Check that each edge is shared by exactly two face loops
+    for (const auto& entry : edgeFaceLoopCount) {
+        if (entry.second != 2) {
+            return false; // Not a legal body loop
+        }
+    }
+
+    return true; // Legal body loop
+}
+
+Vector3D Wireframe::getEdgeDirection(const Edge3D& edge, const Vector3D& normal) {
+    Vertex3D& v1 = vertices3D[edge.v1_index];
+    Vertex3D& v2 = vertices3D[edge.v2_index];
+    Vector3D e(v2.x - v1.x, v2.y - v1.y, v2.z - v1.z);
+    e = e.normalize();
+
+    // Use the right-hand rule to determine if we need to reverse the edge direction
+    Vector3D crossProduct = normal.cross(e);
+    if (crossProduct.length() < 1e-6) {
+        // Normal and edge are parallel
+        return e;
+    }
+
+    // If the cross product points in the negative z-direction, reverse the edge direction
+    if (crossProduct.z < 0) {
+        e = Vector3D(-e.x, -e.y, -e.z);
+    }
+
+    return e;
+}
+
+bool Wireframe::determineFaceLoopSide(const Plane& currentPlane, const Plane& adjPlane, const Edge3D& edge, bool currentPositiveSide, bool& adjPositiveSide) {
+    // Compute normals
+    Vector3D n_k(currentPlane.a, currentPlane.b, currentPlane.c);
+    Vector3D n_s(adjPlane.a, adjPlane.b, adjPlane.c);
+
+    // Compute θ
+    double dotProduct = n_k.dot(n_s);
+    double magnitudeProduct = n_k.length() * n_s.length();
+    double cosTheta = dotProduct / magnitudeProduct;
+    cosTheta = std::max(-1.0, std::min(1.0, cosTheta));
+    double theta = std::acos(cosTheta);
+
+    // Compute e (edge direction vector)
+    Vector3D e = getEdgeDirection(edge, n_k);
+
+    // Compute cross products
+    Vector3D cross_ns_nk = n_s.cross(n_k);
+    bool sameDirection = cross_ns_nk.dot(e) > 0;
+
+    // Determine α and side selection based on criteria
+    double alpha;
+    if (sameDirection && currentPositiveSide) {
+        alpha = theta;
+        adjPositiveSide = true;
+    } else if (!sameDirection && !currentPositiveSide) {
+        alpha = theta;
+        adjPositiveSide = false;
+    } else if (sameDirection && !currentPositiveSide) {
+        alpha = 2 * M_PI - theta;
+        adjPositiveSide = false;
+    } else {
+        alpha = M_PI + theta;
+        adjPositiveSide = true;
+    }
+
+    // Return whether adjPositiveSide is determined
+    return true;
 }
 

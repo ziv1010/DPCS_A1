@@ -11,6 +11,8 @@
 #include "vector3d.h"    // New: Vector3D class
 #include <unordered_map>
 #include "vector2d.h" 
+#include "FaceLoopSide.h"
+
 
 // Forward declarations if necessary
 class Wireframe {
@@ -43,6 +45,11 @@ public:
     void generateFaceLoops();
 
     void handleCuttingEdgesAndVertices();
+
+    void generateBodyLoops();
+
+    // In wireframe.h
+
 
 
 private:
@@ -95,6 +102,13 @@ bool lineTouchesFaceLoopBoundaries(const std::vector<Vector3D>& faceLoopVertices
 bool segmentsIntersect(const Vector3D& p1_start, const Vector3D& p1_end, const Vector3D& p2_start, const Vector3D& p2_end, Vector3D& intersectionPoint);
 void insertVertexIntoFaceLoop(Plane& plane, const Vector3D& point, int vertexIdx);
 bool pointOnSegment(const Vector3D& point, const Vector3D& segStart, const Vector3D& segEnd) const;
+
+
+   Vector3D getEdgeDirection(const Edge3D& edge, const Vector3D& normal);
+
+    bool determineFaceLoopSide(const Plane& currentPlane, const Plane& adjPlane, const Edge3D& edge, bool currentPositiveSide, bool& adjPositiveSide);
+    bool isBodyLoopLegal(const std::vector<int>& S, const std::vector<FaceLoopSide>& faceLoopSides)const;
+    std::vector<std::vector<int>> bodyLoops; // Declare bodyLoops
 
 };
 
