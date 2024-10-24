@@ -1212,3 +1212,442 @@ bool Wireframe::isPointInPolygon(const Vector2D& point, const std::vector<Vector
     }
     return (crossings % 2) == 1;
 }
+
+// In wireframe.cpp
+
+void Wireframe::handleCuttingEdgesAndVertices() {
+    // For each pair of planes
+    for (size_t i = 0; i < planes.size(); ++i) {
+        for (size_t j = i + 1; j < planes.size(); ++j) {
+            Plane& plane1 = planes[i];
+            Plane& plane2 = planes[j];
+
+            // Check if planes are coplanar
+            if (arePlanesCoplanar(plane1, plane2)) {
+                continue; // Skip coplanar planes
+            }
+
+            // Compute the intersection line of the two planes
+            Vector3D pointOnLine, lineDirection;
+            if (!computePlaneIntersectionLine(plane1, plane2, pointOnLine, lineDirection)) {
+                continue; // Planes are parallel and non-intersecting
+            }
+
+            // For each pair of face loops
+            for (const auto& faceLoop1 : plane1.faceLoops) {
+                for (const auto& faceLoop2 : plane2.faceLoops) {
+                    int caseType = 0;
+                    if (checkFaceLoopsIntersection(plane1, plane2, faceLoop1, faceLoop2, caseType)) {
+                        if (caseType == 1) {
+                            // Case 1: Regular intersection, no action needed
+                            continue;
+                        } else if (caseType == 2) {
+                            // Case 2: Introduce cutting edges and vertices
+                            std::vector<Vector3D> intersectionPoints;
+                            if (findFaceLoopIntersections(faceLoop1, faceLoop2, intersectionPoints)) {
+                                insertCuttingEdgesAndVertices(plane1, plane2, intersectionPoints);
+                            }
+                        } else if (caseType == 3) {
+                            // Case 3: Remove the problematic face loop
+                            removeFaceLoop(plane1, faceLoop1);
+                            // Optionally, break out of loops if necessary
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+bool Wireframe::arePlanesCoplanar(const Plane& plane1, const Plane& plane2, float tolerance) const {
+    // Compute the cross product of the normals
+    Vector3D normal1(plane1.a, plane1.b, plane1.c);
+    Vector3D normal2(plane2.a, plane2.b, plane2.c);
+    Vector3D cross = normal1.cross(normal2);
+
+    if (cross.length() <= tolerance) {
+        // Normals are parallel; check if planes are the same
+        float dDiff = std::abs(plane1.d - plane2.d);
+        return dDiff <= tolerance;
+    }
+    return false;
+}
+
+bool Wireframe::computePlaneIntersectionLine(const Plane& plane1, const Plane& plane2, Vector3D& pointOnLine, Vector3D& lineDirection) {
+    Vector3D n1(plane1.a, plane1.b, plane1.c);
+    Vector3D n2(plane2.a, plane2.b, plane2.c);
+
+    lineDirection = n1.cross(n2);
+
+    float denom = lineDirection.length();
+
+    if (denom < 1e-6f) {
+        // Planes are parallel and non-intersecting
+        return false;
+    }
+
+    // Solve for a point on the line of intersection
+    // Using Cramer's Rule for solving linear equations
+
+    // Plane equations:
+    // plane1: a1*x + b1*y + c1*z + d1 = 0
+    // plane2: a2*x + b2*y + c2*z + d2 = 0
+
+    // We can set one variable (e.g., x) to 0 and solve for y and z
+
+    // Choose the largest component of lineDirection to avoid division by zero
+    float absX = std::abs(lineDirection.x);
+    float absY = std::abs(lineDirection.y);
+    float absZ = std::abs(lineDirection.z);
+
+    float x, y, z;
+
+    if (absX >= absY && absX >= absZ) {
+        // Set y = 0, z = 0
+        x = -(plane1.d * plane2.b - plane2.d * plane1.b) / (plane1.a * plane2.b - plane2.a * plane1.b);
+        y = 0;
+        z = 0;
+    } else if (absY >= absX && absY >= absZ) {
+        // Set x = 0, z = 0
+        x = 0;
+        y = -(plane1.d * plane2.c - plane2.d * plane1.c) / (plane1.b * plane2.c - plane2.b * plane1.c);
+        z = 0;
+    } else {
+        // Set x = 0, y = 0
+        x = 0;
+        y = 0;
+        z = -(plane1.d * plane2.a - plane2.d * plane1.a) / (plane1.c * plane2.a - plane2.c * plane1.a);
+    }
+
+    pointOnLine = Vector3D(x, y, z);
+
+    lineDirection = lineDirection.normalize();
+
+    return true;
+}
+
+bool Wireframe::checkFaceLoopsIntersection(const Plane& plane1, const Plane& plane2, const std::vector<int>& faceLoop1, const std::vector<int>& faceLoop2, int& caseType) {
+    // Project face loops onto the intersection line and check for overlap
+
+    Vector3D pointOnLine, lineDirection;
+    if (!computePlaneIntersectionLine(plane1, plane2, pointOnLine, lineDirection)) {
+        return false;
+    }
+
+    // Collect vertices of faceLoop1
+    std::vector<Vector3D> faceLoop1Vertices;
+    for (int edgeIdx : faceLoop1) {
+        const Edge3D& edge = edges3D[edgeIdx];
+        const Vertex3D& v1 = vertices3D[edge.v1_index];
+        const Vertex3D& v2 = vertices3D[edge.v2_index];
+        faceLoop1Vertices.push_back(Vector3D(v1.x, v1.y, v1.z));
+        faceLoop1Vertices.push_back(Vector3D(v2.x, v2.y, v2.z));
+    }
+
+    // Collect vertices of faceLoop2
+    std::vector<Vector3D> faceLoop2Vertices;
+    for (int edgeIdx : faceLoop2) {
+        const Edge3D& edge = edges3D[edgeIdx];
+        const Vertex3D& v1 = vertices3D[edge.v1_index];
+        const Vertex3D& v2 = vertices3D[edge.v2_index];
+        faceLoop2Vertices.push_back(Vector3D(v1.x, v1.y, v1.z));
+        faceLoop2Vertices.push_back(Vector3D(v2.x, v2.y, v2.z));
+    }
+
+    // Check if the intersection line intersects both face loops
+    bool intersectsFaceLoop1 = faceLoopIntersectsLine(faceLoop1Vertices, pointOnLine, lineDirection);
+    bool intersectsFaceLoop2 = faceLoopIntersectsLine(faceLoop2Vertices, pointOnLine, lineDirection);
+
+    if (intersectsFaceLoop1 && intersectsFaceLoop2) {
+        // Now classify the intersection into cases
+
+        // For simplicity, we'll assume:
+        // - If the intersection line coincides with an edge in both face loops, it's Case 1.
+        // - If the intersection line crosses both face loops at edges or vertices, it's Case 2.
+        // - If the intersection line is entirely inside one face loop without touching boundaries, it's Case 3.
+
+        bool coincidesWithEdge = lineCoincidesWithEdge(faceLoop1Vertices, pointOnLine, lineDirection) &&
+                                 lineCoincidesWithEdge(faceLoop2Vertices, pointOnLine, lineDirection);
+
+        if (coincidesWithEdge) {
+            caseType = 1;
+            return true;
+        }
+
+        bool touchesBoundaries = lineTouchesFaceLoopBoundaries(faceLoop1Vertices, pointOnLine, lineDirection) &&
+                                 lineTouchesFaceLoopBoundaries(faceLoop2Vertices, pointOnLine, lineDirection);
+
+        if (touchesBoundaries) {
+            caseType = 2;
+            return true;
+        }
+
+        caseType = 3;
+        return true;
+    }
+
+    return false; // No intersection
+}
+
+bool Wireframe::faceLoopIntersectsLine(const std::vector<Vector3D>& faceLoopVertices, const Vector3D& pointOnLine, const Vector3D& lineDirection) {
+    // For each edge in the face loop, check if it intersects with the line
+    for (size_t i = 0; i < faceLoopVertices.size(); i += 2) {
+        const Vector3D& p1 = faceLoopVertices[i];
+        const Vector3D& p2 = faceLoopVertices[i + 1];
+
+        if (lineIntersectsSegment(pointOnLine, lineDirection, p1, p2)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Wireframe::lineIntersectsSegment(const Vector3D& linePoint, const Vector3D& lineDir, const Vector3D& segPoint1, const Vector3D& segPoint2) {
+    // Compute the closest point between line and segment
+    Vector3D u = lineDir;
+    Vector3D v = segPoint2 - segPoint1;
+    Vector3D w = linePoint - segPoint1;
+
+    float a = u.dot(u); // always >= 0
+    float b = u.dot(v);
+    float c = v.dot(v); // always >= 0
+    float d = u.dot(w);
+    float e = v.dot(w);
+
+    float D = a * c - b * b; // always >= 0
+
+    float sc, tc;
+
+    // Compute the line parameters of the two closest points
+    if (D < 1e-6f) {
+        // Lines are almost parallel
+        sc = 0.0f;
+        tc = (b > c ? d / b : e / c);
+    } else {
+        sc = (b * e - c * d) / D;
+        tc = (a * e - b * d) / D;
+    }
+
+    // Check if tc is between 0 and 1 (segment parameter)
+    if (tc < 0.0f || tc > 1.0f) {
+        return false;
+    }
+
+    // Compute the closest points
+    Vector3D closestPointLine = linePoint + u * sc;
+    Vector3D closestPointSegment = segPoint1 + v * tc;
+
+    // Compute the distance between the closest points
+    Vector3D diff = closestPointLine - closestPointSegment;
+    float distanceSquared = diff.dot(diff);
+
+    // If the distance is small enough, consider it an intersection
+    return distanceSquared < 1e-6f;
+}
+
+bool Wireframe::lineCoincidesWithEdge(const std::vector<Vector3D>& faceLoopVertices, const Vector3D& pointOnLine, const Vector3D& lineDirection) {
+    // For each edge in the face loop, check if the line coincides with the edge
+    for (size_t i = 0; i < faceLoopVertices.size(); i += 2) {
+        const Vector3D& p1 = faceLoopVertices[i];
+        const Vector3D& p2 = faceLoopVertices[i + 1];
+
+        Vector3D edgeDir = p2 - p1;
+        edgeDir = edgeDir.normalize();
+
+        // Check if edge direction and line direction are the same or opposite
+        float dotProduct = std::abs(edgeDir.dot(lineDirection));
+        if (dotProduct > 1.0f - 1e-6f) {
+            // Check if the line passes through p1
+            Vector3D diff = p1 - pointOnLine;
+            Vector3D crossProduct = diff.cross(lineDirection);
+            if (crossProduct.length() < 1e-6f) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool Wireframe::lineTouchesFaceLoopBoundaries(const std::vector<Vector3D>& faceLoopVertices, const Vector3D& pointOnLine, const Vector3D& lineDirection) {
+    // Check if the line intersects at the edges or vertices of the face loop
+    for (size_t i = 0; i < faceLoopVertices.size(); i += 2) {
+        const Vector3D& p1 = faceLoopVertices[i];
+        const Vector3D& p2 = faceLoopVertices[i + 1];
+
+        // Check intersection with edge
+        if (lineIntersectsSegment(pointOnLine, lineDirection, p1, p2)) {
+            return true;
+        }
+
+        // Check if line passes through vertex p1 or p2
+        Vector3D diff1 = p1 - pointOnLine;
+        Vector3D cross1 = diff1.cross(lineDirection);
+        if (cross1.length() < 1e-6f) {
+            return true;
+        }
+
+        Vector3D diff2 = p2 - pointOnLine;
+        Vector3D cross2 = diff2.cross(lineDirection);
+        if (cross2.length() < 1e-6f) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Wireframe::findFaceLoopIntersections(const std::vector<int>& faceLoop1, const std::vector<int>& faceLoop2, std::vector<Vector3D>& intersectionPoints) {
+    // Implement intersection point calculation between faceLoop1 and faceLoop2
+    // For each edge in faceLoop1, check for intersection with each edge in faceLoop2
+    for (int edgeIdx1 : faceLoop1) {
+        const Edge3D& edge1 = edges3D[edgeIdx1];
+        Vector3D p1_start(vertices3D[edge1.v1_index].x, vertices3D[edge1.v1_index].y, vertices3D[edge1.v1_index].z);
+        Vector3D p1_end(vertices3D[edge1.v2_index].x, vertices3D[edge1.v2_index].y, vertices3D[edge1.v2_index].z);
+
+        for (int edgeIdx2 : faceLoop2) {
+            const Edge3D& edge2 = edges3D[edgeIdx2];
+            Vector3D p2_start(vertices3D[edge2.v1_index].x, vertices3D[edge2.v1_index].y, vertices3D[edge2.v1_index].z);
+            Vector3D p2_end(vertices3D[edge2.v2_index].x, vertices3D[edge2.v2_index].y, vertices3D[edge2.v2_index].z);
+
+            Vector3D intersectionPoint;
+            if (segmentsIntersect(p1_start, p1_end, p2_start, p2_end, intersectionPoint)) {
+                intersectionPoints.push_back(intersectionPoint);
+            }
+        }
+    }
+
+    return !intersectionPoints.empty();
+}
+
+void Wireframe::insertCuttingEdgesAndVertices(Plane& plane1, Plane& plane2, const std::vector<Vector3D>& intersectionPoints) {
+    // For each intersection point, add a new vertex and update face loops
+
+    for (const Vector3D& point : intersectionPoints) {
+        // Check if the vertex already exists
+        int vertexIdx = findVertex3DIndex(point.x, point.y, point.z);
+        if (vertexIdx == -1) {
+            // Add new vertex
+            Vertex3D newVertex(point.x, point.y, point.z);
+            vertexIdx = vertices3D.size();
+            vertices3D.push_back(newVertex);
+        }
+
+        // Insert cutting edges into face loops
+        // For plane1
+        insertVertexIntoFaceLoop(plane1, point, vertexIdx);
+        // For plane2
+        insertVertexIntoFaceLoop(plane2, point, vertexIdx);
+    }
+}
+
+void Wireframe::removeFaceLoop(Plane& plane, const std::vector<int>& faceLoop) {
+    // Remove the face loop from the plane's faceLoops
+    plane.faceLoops.erase(
+        std::remove(plane.faceLoops.begin(), plane.faceLoops.end(), faceLoop),
+        plane.faceLoops.end()
+    );
+}
+
+bool Wireframe::segmentsIntersect(const Vector3D& p1_start, const Vector3D& p1_end, const Vector3D& p2_start, const Vector3D& p2_end, Vector3D& intersectionPoint) {
+    // Use the 3D line segment intersection algorithm
+
+    // Represent segments as parametric equations
+    Vector3D u = p1_end - p1_start;
+    Vector3D v = p2_end - p2_start;
+    Vector3D w = p1_start - p2_start;
+
+    float a = u.dot(u); // always >= 0
+    float b = u.dot(v);
+    float c = v.dot(v); // always >= 0
+    float d = u.dot(w);
+    float e = v.dot(w);
+
+    float D = a * c - b * b; // always >= 0
+
+    float sc, tc;
+
+    // Compute the line parameters of the two closest points
+    if (D < 1e-6f) {
+        // Lines are almost parallel
+        return false; // No intersection
+    } else {
+        sc = (b * e - c * d) / D;
+        tc = (a * e - b * d) / D;
+    }
+
+    // Compute the closest points
+    Vector3D closestPoint1 = p1_start + u * sc;
+    Vector3D closestPoint2 = p2_start + v * tc;
+
+    // Check if the closest points are the same (within tolerance)
+    Vector3D diff = closestPoint1 - closestPoint2;
+    if (diff.length() < 1e-6f) {
+        // Check if sc and tc are within [0,1]
+        if (sc >= 0.0f && sc <= 1.0f && tc >= 0.0f && tc <= 1.0f) {
+            intersectionPoint = closestPoint1;
+            return true;
+        }
+    }
+
+    return false; // No intersection
+}
+
+void Wireframe::insertVertexIntoFaceLoop(Plane& plane, const Vector3D& point, int vertexIdx) {
+    // For each face loop in the plane
+    for (auto& faceLoop : plane.faceLoops) {
+        // For each edge in the face loop
+        for (size_t i = 0; i < faceLoop.size(); ++i) {
+            int edgeIdx = faceLoop[i];
+            Edge3D& edge = edges3D[edgeIdx];
+            Vector3D p1(vertices3D[edge.v1_index].x, vertices3D[edge.v1_index].y, vertices3D[edge.v1_index].z);
+            Vector3D p2(vertices3D[edge.v2_index].x, vertices3D[edge.v2_index].y, vertices3D[edge.v2_index].z);
+
+            // Check if the point lies on this edge
+            if (pointOnSegment(point, p1, p2)) {
+                // Split the edge into two edges at the new vertex
+                // Invalidate the old edge
+                edge.isValid = false;
+
+                // Create two new edges
+                int newEdgeIdx1 = edges3D.size();
+                edges3D.emplace_back(edge.v1_index, vertexIdx);
+                vertices3D[edge.v1_index].addConnectedEdge(newEdgeIdx1);
+                vertices3D[vertexIdx].addConnectedEdge(newEdgeIdx1);
+
+                int newEdgeIdx2 = edges3D.size();
+                edges3D.emplace_back(vertexIdx, edge.v2_index);
+                vertices3D[vertexIdx].addConnectedEdge(newEdgeIdx2);
+                vertices3D[edge.v2_index].addConnectedEdge(newEdgeIdx2);
+
+                // Replace the old edge in the face loop with the two new edges
+                faceLoop.erase(faceLoop.begin() + i);
+                faceLoop.insert(faceLoop.begin() + i, newEdgeIdx2);
+                faceLoop.insert(faceLoop.begin() + i, newEdgeIdx1);
+
+                // Adjust the index to account for the inserted edge
+                ++i;
+
+                break; // Move to the next face loop
+            }
+        }
+    }
+}
+
+bool Wireframe::pointOnSegment(const Vector3D &point, const Vector3D &segStart, const Vector3D &segEnd) const {
+    // Vector from segStart to point
+    Vector3D d1 = point - segStart;
+    // Vector from segStart to segEnd
+    Vector3D d2 = segEnd - segStart;
+
+    // Calculate dot product
+    float dotProduct = d1.dot(d2);
+
+    // Check if point lies within the segment bounds
+    if (dotProduct < 0.0f || dotProduct > d2.dot(d2)) {
+        return false; // Point is outside the segment
+    }
+
+    // Check if the point is colinear with the segment
+    Vector3D crossProduct = d1.cross(d2);
+    return crossProduct.length() < 1e-6f; // Tolerance for floating-point precision
+}
+

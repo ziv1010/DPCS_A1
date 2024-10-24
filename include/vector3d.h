@@ -12,11 +12,6 @@ public:
     Vector3D(float x_=0.0f, float y_=0.0f, float z_=0.0f)
         : x(x_), y(y_), z(z_) {}
 
-    // Vector subtraction
-    Vector3D operator-(const Vector3D& v) const {
-        return Vector3D(x - v.x, y - v.y, z - v.z);
-    }
-
     // Cross product
     Vector3D cross(const Vector3D& v) const {
         return Vector3D(y * v.z - z * v.y,
@@ -42,6 +37,29 @@ public:
         }
         return Vector3D(0.0f, 0.0f, 0.0f); // Zero vector if length is too small
     }
+
+    // Operator Overloads
+
+    // Member function for Vector3D + Vector3D
+    Vector3D operator+(const Vector3D& other) const {
+        return Vector3D(x + other.x, y + other.y, z + other.z);
+    }
+
+    // Member function for Vector3D - Vector3D
+    Vector3D operator-(const Vector3D& other) const {
+        return Vector3D(x - other.x, y - other.y, z - other.z);
+    }
+
+    // Member function for Vector3D * float
+    Vector3D operator*(float scalar) const {
+        return Vector3D(x * scalar, y * scalar, z * scalar);
+    }
+
+    // Friend function for float * Vector3D
+    friend Vector3D operator*(float scalar, const Vector3D& vec) {
+        return Vector3D(vec.x * scalar, vec.y * scalar, vec.z * scalar);
+    }
+
 };
 
 #endif // VECTOR3D_H

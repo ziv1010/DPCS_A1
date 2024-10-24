@@ -42,6 +42,9 @@ public:
 
     void generateFaceLoops();
 
+    void handleCuttingEdgesAndVertices();
+
+
 private:
     const Projection2D& frontView;
     const Projection2D& topView;
@@ -71,6 +74,27 @@ private:
     bool isLoopIncludedInLoop(const std::vector<int>& innerLoop, const std::vector<int>& outerLoop, const Plane& plane);
     void projectLoopOntoPlane(const std::vector<int>& loop, const Plane& plane, std::vector<Vector2D>& loop2D);
     bool isPointInPolygon(const Vector2D& point, const std::vector<Vector2D>& polygon);
+
+
+    // Helper functions
+    bool arePlanesCoplanar(const Plane& plane1, const Plane& plane2, float tolerance = 1e-5f) const;
+    bool checkFaceLoopsIntersection(const Plane& plane1, const Plane& plane2, const std::vector<int>& faceLoop1, const std::vector<int>& faceLoop2, int& caseType);
+    bool computePlaneIntersectionLine(const Plane& plane1, const Plane& plane2, Vector3D& pointOnLine, Vector3D& lineDirection);
+bool findFaceLoopIntersections(const std::vector<int>& faceLoop1, 
+                                const std::vector<int>& faceLoop2, 
+                                std::vector<Vector3D>& intersectionPoints);
+    void insertCuttingEdgesAndVertices(Plane& plane1, Plane& plane2, const std::vector<Vector3D>& intersectionPoints);
+    void removeFaceLoop(Plane& plane, const std::vector<int>& faceLoop);
+
+    // In wireframe.h
+
+bool faceLoopIntersectsLine(const std::vector<Vector3D>& faceLoopVertices, const Vector3D& pointOnLine, const Vector3D& lineDirection);
+bool lineIntersectsSegment(const Vector3D& linePoint, const Vector3D& lineDir, const Vector3D& segPoint1, const Vector3D& segPoint2);
+bool lineCoincidesWithEdge(const std::vector<Vector3D>& faceLoopVertices, const Vector3D& pointOnLine, const Vector3D& lineDirection);
+bool lineTouchesFaceLoopBoundaries(const std::vector<Vector3D>& faceLoopVertices, const Vector3D& pointOnLine, const Vector3D& lineDirection);
+bool segmentsIntersect(const Vector3D& p1_start, const Vector3D& p1_end, const Vector3D& p2_start, const Vector3D& p2_end, Vector3D& intersectionPoint);
+void insertVertexIntoFaceLoop(Plane& plane, const Vector3D& point, int vertexIdx);
+bool pointOnSegment(const Vector3D& point, const Vector3D& segStart, const Vector3D& segEnd) const;
 
 };
 
