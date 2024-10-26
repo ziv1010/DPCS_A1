@@ -1955,3 +1955,116 @@ bool Wireframe::determineFaceLoopSide(const Plane& currentPlane, const Plane& ad
     return true;
 }
 
+
+
+
+
+//generate candidate 
+
+
+void Wireframe::generateCandidateObjects() {
+    size_t numBodyLoops = bodyLoops.size();
+    size_t numCandidates = (1 << numBodyLoops) - 1; // 2^N - 1
+
+    for (size_t i = 1; i <= numCandidates; ++i) {
+        CandidateObject candidate;
+        for (size_t j = 0; j < numBodyLoops; ++j) {
+            if (i & (1 << j)) {
+                candidate.bodyLoops.push_back(bodyLoops[j]);
+            }
+        }
+        candidates.push_back(candidate);
+    }
+}
+
+void CandidateObject::eliminateRedundantFaceLoops() {
+    // For each face loop, check if both sides are selected in the same solid
+    // If so, remove it from the face loops of the candidate
+    std::vector<FaceLoop> uniqueFaceLoops;
+    std::unordered_map<FaceLoop, int> faceLoopCounts;
+
+    for (const auto& bodyLoop : bodyLoops) {
+        for (const auto& faceLoop : bodyLoop.faceLoops) {
+            faceLoopCounts[faceLoop] += faceLoop.sideSelection;
+        }
+    }
+
+    for (const auto& [faceLoop, count] : faceLoopCounts) {
+        if (abs(count) == 1) {
+            uniqueFaceLoops.push_back(faceLoop);
+        }
+        // Else, faceLoop is redundant and not added
+    }
+
+    faceLoops = uniqueFaceLoops;
+}
+
+void CandidateObject::eliminateRedundantEdges() {
+    // Identify edges shared by two and only two coplanar face loops
+    // Remove such edges and merge the face loops
+
+    // Implementation depends on your data structures
+}
+bool CandidateObject::isLegal() {
+    // Check for shared vertices without shared edges
+    if (hasIllegalVertexSharing()) {
+        return false;
+    }
+
+    // Check for edges with more than two adjacent face loops
+    if (hasEdgeWithTooManyFaces()) {
+        return false;
+    }
+
+    return true;
+}
+
+bool CandidateObject::hasIllegalVertexSharing() {
+    // Implement logic to detect face loops that share vertices but not edges
+}
+
+bool CandidateObject::hasEdgeWithTooManyFaces() {
+    // Implement logic to count the number of face loops adjacent to each edge
+}
+void CandidateObject::projectOntoPlanes(Projection2D& frontView, Projection2D& topView, Projection2D& sideView) {
+    // For each edge in the candidate object, project it onto the three planes
+    for (const auto& edge : edges) {
+        Vertex3D v1 = vertices[edge.v1_index];
+        Vertex3D v2 = vertices[edge.v2_index];
+
+        // Project onto front view (xz-plane)
+        frontView.addEdge(v1.getX(), v1.getZ(), v2.getX(), v2.getZ());
+
+        // Project onto top view (xy-plane)
+        topView.addEdge(v1.getX(), v1.getY(), v2.getX(), v2.getY());
+
+        // Project onto side view (yz-plane)
+        sideView.addEdge(v1.getY(), v1.getZ(), v2.getY(), v2.getZ());
+    }
+}
+
+bool CandidateObject::isConsistentWithViews(const Projection2D& inputFrontView, const Projection2D& inputTopView, const Projection2D& inputSideView) {
+    Projection2D candidateFrontView, candidateTopView, candidateSideView;
+    projectOntoPlanes(candidateFrontView, candidateTopView, candidateSideView);
+
+    // Compare candidate projections with input views
+    return candidateFrontView.matches(inputFrontView) &&
+           candidateTopView.matches(inputTopView) &&
+           candidateSideView.matches(inputSideView);
+}
+void Wireframe::processCandidates(const Projection2D& inputFrontView, const Projection2D& inputTopView, const Projection2D& inputSideView) {
+    for (auto& candidate : candidates) {
+        candidate.eliminateRedundantFaceLoops();
+        candidate.eliminateRedundantEdges();
+
+        if (!candidate.isLegal()) {
+            continue; // Skip illegal candidates
+        }
+
+        if (candidate.isConsistentWithViews(inputFrontView, inputTopView, inputSideView)) {
+            validCandidates.push_back(candidate);
+        }
+    }
+
+    // Now validCandidates contains all the correct solutions
+}

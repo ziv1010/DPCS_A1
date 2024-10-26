@@ -12,7 +12,45 @@
 #include <unordered_map>
 #include "vector2d.h" 
 #include "FaceLoopSide.h"
+#include "face_loop.h"      // FaceLoop class
 
+class CandidateObject;
+
+struct BodyLoop {
+    std::vector<FaceLoop> faceLoops; // Collection of face loops in the body loop
+
+    // Additional members and methods as needed
+
+    // Equality operator for comparison
+    bool operator==(const BodyLoop& other) const {
+        return faceLoops == other.faceLoops;
+    }
+};
+
+struct CandidateObject {
+    std::vector<BodyLoop> bodyLoops;            // Selected body loops forming the candidate
+    std::vector<FaceLoop> uniqueFaceLoops;      // Unique face loops after eliminating redundancies
+    std::vector<Edge3D> uniqueEdges;            // Unique edges after eliminating redundancies
+
+    // Constructor
+    CandidateObject() = default;
+
+    // Methods to eliminate redundancies and check legality
+    void eliminateRedundantFaceLoops();
+    void eliminateRedundantEdges();
+    bool isLegal() const;
+    bool isConsistentWithViews(const Projection2D& inputFrontView,
+                               const Projection2D& inputTopView,
+                               const Projection2D& inputSideView) const;
+
+private:
+    // Helper methods
+    bool hasIllegalVertexSharing() const;
+    bool hasEdgeWithTooManyFaces() const;
+    void projectOntoPlanes(Projection2D& frontView,
+                           Projection2D& topView,
+                           Projection2D& sideView) const;
+};
 
 // Forward declarations if necessary
 class Wireframe {
@@ -48,6 +86,10 @@ public:
 
     void generateBodyLoops();
 
+    void generateCandidateObjects();
+    void processCandidates(const Projection2D& inputFrontView,
+                           const Projection2D& inputTopView,
+                           const Projection2D& inputSideView);
     // In wireframe.h
 
 
@@ -110,6 +152,30 @@ bool pointOnSegment(const Vector3D& point, const Vector3D& segStart, const Vecto
     bool isBodyLoopLegal(const std::vector<int>& S, const std::vector<FaceLoopSide>& faceLoopSides)const;
     std::vector<std::vector<int>> bodyLoops; // Declare bodyLoops
 
+    // 3D elements
+    std::vector<Vertex3D> vertices3D;
+    std::vector<Edge3D> edges3D;
+    std::vector<Plane> planes;
+
+    // Body loops
+    std::vector<BodyLoop> bodyLoops;          // All generated body loops
+    std::vector<BodyLoop> innerBodyLoops;     // Classified inner body loops
+    std::vector<BodyLoop> outerBodyLoops;     // Classified outer body loops
+
+    // Candidate objects
+    std::vector<CandidateObject> candidates;      // All possible candidates
+    std::vector<CandidateObject> validCandidates; // Validated candidates matching input views
+
+    // Helper methods for body loop classification
+    bool isInnerBodyLoop(const BodyLoop& bodyLoop) const;
+    bool intersectsFaceLoop(const Vector3D& origin, const Vector3D& direction, const FaceLoop& faceLoop) const;
+
+    // Helper methods for candidate processing
+    void classifyBodyLoopsInternal();
+    // Other helper methods as needed
+};
+
 };
 
 #endif // WIREFRAME_H
+

@@ -3,7 +3,6 @@
 
 #include "object3d.h"
 #include <vector>
-#include "projection2d.h"
 
 class ThreeDToTwoD {
 public:

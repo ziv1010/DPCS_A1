@@ -6,4 +6,4 @@
 
 void read3DObjectFromFile(const std::string& filename, Object3D& object);
 
-#endif // FILE_IO_H
+#endif

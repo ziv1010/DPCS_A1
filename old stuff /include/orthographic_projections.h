@@ -4,7 +4,11 @@
 #include "object3d.h"
 #include <vector>
 #include <utility>
-#include "projection2d.h"
+
+struct Projection2D {
+    std::vector<std::pair<float, float>> projectedVertices;
+    std::vector<std::pair<int, int>> projectedEdges; // indices into projectedVertices
+};
 
 // Projection functions
 void projectToTopView(const Object3D& object, Projection2D& projection);
@@ -23,11 +27,4 @@ void saveProjectionsToTextFile(const std::string& filename,
                                const Projection2D& frontView,
                                const Projection2D& sideView);
 
-// Classify edges as visible or hidden
-void classifyEdges(const Object3D& object,
-                   Projection2D& projection,
-                   const std::vector<Face>& faces,
-                   const std::string& plane);
-
-
-#endif // ORTHOGRAPHIC_PROJECTIONS_H
+#endif

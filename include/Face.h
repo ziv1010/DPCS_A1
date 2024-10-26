@@ -1,19 +1,27 @@
+// face.h
+
 #ifndef FACE_H
 #define FACE_H
 
 #include <vector>
-#include "edge.h"
+#include "vertex.h"
+#include "polygon2d.h"  // Make sure to include this
 
 class Face {
 public:
-    std::vector<Edge> edges;
+    std::vector<int> vertexIndices; // Indices of vertices forming the face, in order
 
-    Face(const std::vector<Edge>& edges) : edges(edges) {}
+    // Constructor
+    Face(const std::vector<int>& indices) : vertexIndices(indices) {}
 
-    // Add edge to the face
-    void addEdge(const Edge& edge) {
-        edges.push_back(edge);
+    // Method to get vertex indices
+    std::vector<int> getVertexIndices() const {
+        return vertexIndices;
     }
+
+    // **Add this declaration**
+    // Project the face onto a specified plane and return as Polygon2D
+    Polygon2D projectFaceToPlane(const std::string& plane, const std::vector<Vertex>& vertices) const;
 };
 
 #endif // FACE_H
